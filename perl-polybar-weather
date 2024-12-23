@@ -1,0 +1,326 @@
+#!/usr/bin/perl
+#
+# Perl Polybar Weather
+# -----------------------------------------------
+# Author: Mark Page [mark@very3.net]
+# Modified: Mon Dec 23 14:43:06 2024 -0600
+# Version: 24.12.23.1443
+# -----------------------------------------------
+#
+use strict;
+use warnings;
+use POSIX qw(strftime ceil);
+use LWP::UserAgent;
+use URI;
+use JSON;
+
+my $app = {
+  'app_path' => $ENV{'HOME'}.'/.config/polybar/perl-polybar-weather',
+  'app_keys' => ['api_key','api_cid','api_lat','api_lon','api_days','api_units','divider','browser','browser_args','notify_agent'],
+  'api_url'  => 'https://api.openweathermap.org/data/2.5/',
+};
+
+my $ua = LWP::UserAgent->new;
+my $js = JSON->new->allow_nonref;
+
+#------------------------------------------------------------------------------
+my $icons = {
+  '01d' => '', # clear sky day
+  '01n' => '', # clear sky night
+  '02d' => '', # few clouds day
+  '02n' => '', # few clouds night
+  '03d' => '', # scattered clouds day
+  '03n' => '', # scattered clouds night
+  '04d' => '', # broken clouds day
+  '04n' => '', # broken clouds night
+  '09d' => '', # shower rain day
+  '09n' => '', # shower rain night
+  '10d' => '', # rain day
+  '10n' => '', # rain night
+  '11d' => '', # thunderstorm day
+  '11n' => '', # thunderstorm night
+  '13d' => '', # snow day
+  '13n' => '', # snow night
+  '50d' => '', # mist day
+  '50n' => '', # mist night
+};
+
+my $degrees = {
+  'imperial' => '°F',
+  'metric'   => '°C',
+  'standard' => '°K',
+};
+
+my $speed = {
+  'imperial' => 'mph',
+  'metric'   => 'kph',
+  'standard' => 'kph',
+};
+
+my %routes = (
+  'weather'  => \&weather,
+  'forecast' => \&forecast,
+);
+#------------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
+main: {
+  util::config();
+
+  my $_endpoint = 'weather'; # default endpoint
+
+  if (defined($ARGV[0])) {
+    $_endpoint = $ARGV[0];
+  }
+
+  if (!exists($routes{$_endpoint})) {
+    die "Unknown function!\n";
+  }
+
+  my $_r = owapi::get({
+    'endpoint' => $_endpoint
+  });
+
+  if ($_r->{'status'} =~ m/200/) {
+    print $routes{$_endpoint}->({
+      'data' => $js->decode($_r->{'content'}),
+    })->{'text'};
+  }
+  else {
+    die $_r->{'status'};
+  }
+
+  #------------------------------------------------------------------------------
+  sub forecast {
+    my ($_a) = @_;
+    my ($_r);
+
+    $_r->{'conf'}->{'location'}  = $_a->{'data'}->{'city'}->{'name'}.' ('.$_a->{'data'}->{'city'}->{'country'}.')';
+    $_r->{'conf'}->{'day-count'} = $app->{'api_days'};
+    $_r->{'conf'}->{'last-sync'} = strftime("%Y-%m-%d %H:%M:%S",localtime);
+
+    for my $_l (0 .. (scalar(@{$_a->{'data'}->{'list'}}) - 1)) {
+      push(@{$_r->{'data'}},{
+        'date'       => strftime("%Y-%m-%d",localtime($_a->{'data'}->{'list'}[$_l]->{'dt'})),
+        'icon'       => $_a->{'data'}->{'list'}[$_l]->{'weather'}[0]->{'icon'},
+        'desc'       => substr($_a->{'data'}->{'list'}[$_l]->{'weather'}[0]->{'description'},0,20),
+        'high-temp'  => ceil($_a->{'data'}->{'list'}[$_l]->{'temp'}->{'max'}),
+        'low-temp'   => ceil($_a->{'data'}->{'list'}[$_l]->{'temp'}->{'min'}),
+        'feels-like' => ceil($_a->{'data'}->{'list'}[$_l]->{'feels_like'}),
+        'humidity'   => ceil($_a->{'data'}->{'list'}[$_l]->{'humidity'}),
+        'baro-press' => ceil($_a->{'data'}->{'list'}[$_l]->{'pressure'}),
+        'wind-speed' => ceil($_a->{'data'}->{'list'}[$_l]->{'speed'}),
+        'wind-gust'  => ceil($_a->{'data'}->{'list'}[$_l]->{'gust'}),
+        'wind-deg'   => ceil($_a->{'data'}->{'list'}[$_l]->{'deg'}),
+        'wind-dir'   => util::cardinal({ 'deg' => ceil($_a->{'data'}->{'list'}[$_l]->{'deg'}) }),
+      });
+    }
+
+    for my $_i (0 .. (scalar(@{$_r->{'data'}}) - 1)) {
+      $_r->{'text'} .= sprintf("%-10s %-3s %-20s %-5s %-5s %2s %-3s %3s %6s\n",
+        ${$_r->{'data'}}[$_i]->{'date'},
+        $icons->{${$_r->{'data'}}[$_i]->{'icon'}},
+        ${$_r->{'data'}}[$_i]->{'desc'},
+        '↓'.${$_r->{'data'}}[$_i]->{'low-temp'}.$degrees->{$app->{'api_units'}},
+        '↑'.${$_r->{'data'}}[$_i]->{'high-temp'}.$degrees->{$app->{'api_units'}},
+        ${$_r->{'data'}}[$_i]->{'wind-speed'},
+        $speed->{$app->{'api_units'}},
+        ${$_r->{'data'}}[$_i]->{'wind-dir'},
+        '('.${$_r->{'data'}}[$_i]->{'wind-deg'}.'°)',
+      );
+    }
+
+    return $_r;
+  }
+  #------------------------------------------------------------------------------
+
+  #------------------------------------------------------------------------------
+  sub weather {
+    my ($_a) = @_;
+    my ($_r);
+
+    my $_format = 'temp-sky'; # default return
+
+    if (defined($ARGV[1])) {
+      $_format = $ARGV[1];
+    }
+
+    chomp(my @_mods = split(/\-/,$_format));
+
+    $_r->{'data'} = {
+      'location'   => $_a->{'data'}->{'name'}.' ('.$_a->{'data'}->{'sys'}->{'country'}.')',
+      'curr-temp'  => ceil($_a->{'data'}->{'main'}->{'temp'}),
+      'high-temp'  => ceil($_a->{'data'}->{'main'}->{'temp_max'}),
+      'low-temp'   => ceil($_a->{'data'}->{'main'}->{'temp_min'}),
+      'feels-like' => ceil($_a->{'data'}->{'main'}->{'feels_like'}),
+      'wind-dir'   => util::cardinal({ 'deg' => $_a->{'data'}->{'wind'}->{'deg'} }),
+    };
+
+    my $_opts = {
+      'wind'  => $_a->{'data'}->{'wind'}->{'speed'}.' '.$speed->{$app->{'api_units'}}.' '.$_r->{'data'}->{'wind-dir'}.' ('.$_a->{'data'}->{'wind'}->{'deg'}.'°)',
+      'sky'   => $icons->{$_a->{'data'}->{'weather'}[0]->{'icon'}}.' '.$_a->{'data'}->{'weather'}[0]->{'description'},
+      'temp'  => ' '.$_r->{'data'}->{'curr-temp'}.$degrees->{$app->{'api_units'}},
+      'temps' => '→'.$_r->{'data'}->{'curr-temp'}.$degrees->{$app->{'api_units'}}.' ↓'.$_r->{'data'}->{'low-temp'}.$degrees->{$app->{'api_units'}}.' ↑'.$_r->{'data'}->{'high-temp'}.$degrees->{$app->{'api_units'}},
+    };
+
+    my @_tmp = ();
+
+    for my $_m (0 .. (scalar(@_mods) - 1)) {
+      if (!defined($_opts->{$_mods[$_m]})) {
+        die "$_mods[$_m] is not a valid option!";
+      }
+      push(@_tmp,$_opts->{$_mods[$_m]});
+    }
+
+    $_r->{'text'} = join($app->{'divider'},@_tmp);
+
+    return $_r;
+  }
+  #------------------------------------------------------------------------------
+};
+#------------------------------------------------------------------------------
+
+
+exit;
+
+
+#------------------------------------------------------------------------------
+# Packages
+#------------------------------------------------------------------------------
+package owapi;
+  use Data::Dumper;
+  use POSIX qw(strftime ceil);
+
+  $Data::Dumper::Indent = 1;
+  $Data::Dumper::Purity = 1;
+  $Data::Dumper::Terse  = 1;
+
+  sub get {
+    my ($_a) = @_;
+    my ($_r,$_url,$_cnt);
+
+    my $_cache = $app->{'app_path'}.'/.cache/'.$_a->{'endpoint'};
+
+    if ($_a->{'endpoint'} eq 'forecast') {
+      $_url = $app->{'api_url'}.'/'.$_a->{'endpoint'}.'/daily';
+      $_cnt = $app->{'api_days'};
+    }
+    else {
+      $_url = $app->{'api_url'}.'/'.$_a->{'endpoint'};
+      $_cnt = 0;
+    }
+
+    my $_uri = URI->new($_url);
+       $_uri->query_form(
+         'lat'   => $app->{'api_lat'},
+         'lon'   => $app->{'api_lon'},
+         'units' => $app->{'api_units'},
+         'appid' => $app->{'api_key'},
+         'cnt'   => $_cnt,
+       );
+
+    my $_uri_data = $ua->get($_uri);
+
+    if ($_uri_data->status_line !~ m/200/) {
+      if (!stat("$_cache")) {
+        die "OpenWeather connection error! (".Dumper($_uri_data->content).")";
+      }
+
+      open(my $_cfh,'<',"$_cache.cache");
+        $_r = eval(join('',<$_cfh>));
+      close($_cfh);
+    }
+    else {
+      $_r = {
+        'content' => $_uri_data->content,
+        'status'  => $_uri_data->status_line,
+      };
+
+      open(my $_cache,'>',"$_cache.cache");
+        print $_cache Dumper($_r);
+      close($_cache);
+    }
+
+    return $_r;
+  }
+
+return 1;
+#------------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
+package util;
+  use POSIX qw(strftime ceil);
+
+  sub cardinal {
+    my ($_a) = @_;
+
+    my @_cardinal_points = ("N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW","N");
+    my $_cardinal_index  = ceil(($_a->{'deg'}%360)/22.5);
+
+    return $_cardinal_points[$_cardinal_index];
+  }
+
+  sub config {
+    my ($_config);
+
+    if (!stat($app->{'app_path'}.'/.cache/')) {
+      mkdir($app->{'app_path'}.'/.cache/');
+    }
+
+    if (!stat("$app->{'app_path'}/config.ini")) {
+      die 'Missing config file!';
+    }
+
+    open (my $_ifh,'<',"$app->{'app_path'}/config.ini");
+      chomp(my @_data = <$_ifh>);
+    close ($_ifh);
+
+    for my $_d (0 .. (scalar(@_data) - 1)) {
+      if (substr($_data[$_d],0,1) ne '#' && length($_data[$_d]) > 2) {
+        my ($_k,$_v) = split(/\=/,$_data[$_d]);
+        if ($_v eq '--app') { $_v = $_v.'='; }
+        $_config->{$_k} = $_v;
+      }
+    }
+
+    open(my $_srcfh,'>',"$app->{'app_path'}/.cache/state.vars");
+      foreach my $_k (0 .. (scalar(@{$app->{'app_keys'}}) - 1)) {
+        if (!defined($_config->{$app->{'app_keys'}[$_k]})) {
+          die "Configuration error!";
+        }
+        else {
+          $app->{$app->{'app_keys'}[$_k]} = $_config->{$app->{'app_keys'}[$_k]};
+          print $_srcfh uc($app->{'app_keys'}[$_k]).'="'.$app->{$app->{'app_keys'}[$_k]}."\"\n";
+        }
+      }
+
+      my $_r = owapi::get({
+        'endpoint' => 'forecast'
+      });
+
+      if ($_r->{'status'} =~ m/200/) {
+        my $_forecast = main::forecast({
+          'data' => $js->decode($_r->{'content'}),
+        })->{'conf'};
+
+        print $_srcfh 'APP_PATH="'.$app->{'app_path'}."\"\n";
+        print $_srcfh 'LOCATION="'.$_forecast->{'location'}."\"\n";
+        print $_srcfh 'DAY_COUNT="'.$_forecast->{'day-count'}."\"\n";
+        print $_srcfh 'LAST_SYNC="'.$_forecast->{'last-sync'}."\"\n";
+      }
+      else {
+        die "Error: $_r->{'status'}";
+      }
+    close ($_srcfh);
+  }
+
+return 1;
+#------------------------------------------------------------------------------
+
+
+__END__
+
+
+#  vim: set ts=2 sw=2 tw=0 et :

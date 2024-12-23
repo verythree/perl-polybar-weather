@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# Perl Polybar Weather - Notification Launcher
+# ---------------------------------------------
+# Author: Mark Page [mark@very3.net]
+# Modified: Sun Dec 22 09:18:33 2024 -0600
+# Version: 24.12.22.918
+#
+# See: https://github.com/verythree/perl-polybar-weather
+#
+
+source $HOME/.config/polybar/perl-polybar-weather/.cache/state.vars
+
+URLS=(
+  "https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricRain=default&zoom=15&overlay=wind&product=ecmwf&level=surface&lat=$API_LAT&lon=$API_LON&detailLat=$API_LAT&detailLon=$API_LON&detail=true&pressure=true&message=true"
+  "https://openweathermap.org/city/$API_CID"
+)
+
+CLICK=$($NOTIFY_AGENT \
+  "$DAY_COUNT Day Forecast - $LOCATION" \
+  "$($APP_PATH/perl-polybar-weather forecast)" \
+  --action="Windy" \
+  --action="OpenWeather" \
+)
+
+if [ "$CLICK" != "" ]; then
+  $BROWSER $BROWSER_ARGS"${URLS[$CLICK]}"
+fi
+
+#  vim: set ts=2 sw=2 tw=0 et :
+
