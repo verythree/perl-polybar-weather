@@ -34,9 +34,10 @@ or via the shell (keyboard, mouse, event, etc.).
  git clone git@github.com:verythree/perl-polybar-weather
  ```
  * Move to to the `perl-polybar-weather` folder, open the `config.ini` file in your favorite editor and set the location variables ([see below](#module-configuration)).
- * Depending on your distro, you may need to install the Perl JSON (libjson) modules:
+ * Depending on your distro, you may need to install the Perl JSON (libjson) and HTTPS support for LWP::UserAgent modules:
  ```
  sudo pacman -S perl-json
+ sudo pacman -S perl-lwp-protocol-https
  ```
 
 
