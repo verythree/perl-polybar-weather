@@ -45,7 +45,7 @@ or via the shell (keyboard, mouse, event, etc.).
 We highly recommend using the [Weather Icons](https://erikflowers.github.io/weather-icons/) font:
  * Download the fonts: `wget https://github.com/erikflowers/weather-icons/archive/master.zip`
  * Unzip the archive: `unzip master.zip`
- * Install the fonts: `sudo cp -r weather-icons-master /usr/local/share/fonts/.`
+ * Install the fonts: `sudo cp -r weather-icons-master /usr/share/fonts/.`
  * Update the font cache: `sudo fc-cache -f`
 
 You may need to let Polybar know which font(s) to use for the module. In the example below, we've assigned `font-2` for
