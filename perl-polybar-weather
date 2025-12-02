@@ -102,7 +102,7 @@ main: {
 
     for my $_l (0 .. (scalar(@{$_a->{'data'}->{'list'}}) - 1)) {
       push(@{$_r->{'data'}},{
-        'date'       => strftime("%Y-%m-%d",localtime($_a->{'data'}->{'list'}[$_l]->{'dt'})),
+        'date'       => strftime("%m-%d",localtime($_a->{'data'}->{'list'}[$_l]->{'dt'})),
         'icon'       => $_a->{'data'}->{'list'}[$_l]->{'weather'}[0]->{'icon'},
         'desc'       => substr($_a->{'data'}->{'list'}[$_l]->{'weather'}[0]->{'description'},0,20),
         'high-temp'  => ceil($_a->{'data'}->{'list'}[$_l]->{'temp'}->{'max'}),
